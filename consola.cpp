@@ -21,12 +21,14 @@ Consola::Consola(QObject *parent) :
 
     //CONFIGURACION DEL SOCKET USANDO QSETTINGS
         // Creamos el objeto de acceso a archivo datos
+            //QSettings config(APP_CONFFILE, QSettings::IniFormat);
             QSettings config("config", QSettings::IniFormat);
+
             server.port = config.value("puerto", "").toInt();
-            server.key = config.value("key", "").toString();
-            server.certificate = config.value("cert", "").toString();
-            dir = config.value("directorio","").toString();
-            direccion = config.value("direccion_actual","").toInt();
+            server.key = config.value("key", APP_DATADIR + QString("/SSL/server.key")).toString();
+            server.certificate = config.value("cert", APP_DATADIR + QString("/SSL/server.ctr")).toString();
+            dir = config.value("directorio",APP_VARDIR).toString();
+            direccion = config.value("direccion_actual",0).toInt();
             qDebug() << server.port << " " <<
                         server.key  <<" " <<
                         server.certificate <<" " <<

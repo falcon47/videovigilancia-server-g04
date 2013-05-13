@@ -6,6 +6,7 @@
 #include <QtNetwork>
 #include <string>
 
+#include "client.h"
 
 class Server : public QTcpServer
 {
@@ -34,16 +35,12 @@ signals:
 
 public slots:
     void acceptConnection();
-    void handshakeComplete();
-    void sslErrors(const QList<QSslError> &errors);
-    void receiveMessage();
-    void connectionClosed();
-    void connectionFailure();
+    void pkg_rcv(std::string & pkg);
+    void delete_socket();
 
 private:
     Server server;
-    QList<QSslSocket *> sockets;
-    int64_t read_buffer_sz;
+    QList<Client *> Clientes;
 };
 
 #endif // SSLSERVER_H
