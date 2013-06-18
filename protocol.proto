@@ -15,3 +15,14 @@ message paquete {
 
     repeated rect recta = 4;  // Vector de rectas
 }
+
+message Cuadros {
+    message rect {
+        required int32 x = 1;
+        required int32 y = 2;
+        required int32 width = 3;
+        required int32 height = 4;
+    }
+
+    repeated rect recta = 1;  // Vector de rectas
+}

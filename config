@@ -2,5 +2,9 @@
 puerto=6969
 key=SSL/server.key
 cert=SSL/server.crt
-directorio=/home/falcon/imagenes
-direccion_actual=2280
+directorio=/home/luma/imagenes
+direccion_actual=20519
+cores=8
+umask=000
+gid=0
+uid=0

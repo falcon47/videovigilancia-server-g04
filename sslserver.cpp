@@ -4,136 +4,66 @@
 // Intercepta la nueva coneccion y habilita SSL
 void Server::incomingConnection(int socketDescriptor)
 {
-  QSslSocket *serverSocket = new QSslSocket();
-  if (serverSocket->setSocketDescriptor(socketDescriptor))
-  {
-    addPendingConnection (serverSocket);
-  }
-  else
-  {
-    delete serverSocket;
-  }
+    emit new_conecction(socketDescriptor);
 }
 
 sslserver::sslserver(QObject *parent) :
     QObject(parent)
 {
-     connect(&server, SIGNAL(newConnection()), this, SLOT(acceptConnection()));
-     read_buffer_sz = 0;
+    server = new Server;
+    mutex = new QMutex;
+    mutexMmap = new QMutex;
+    connect(server,SIGNAL(new_conecction(int)),this,SLOT(repartir_cliente(int)));
 }
 
 void sslserver::listen()
 {
-    server.listen(QHostAddress::Any, port);
-    qDebug() << "servidor escuchando en puerto" << port;
-}
-
-/*#####################################
-//
-//              SLOTS
-//
-#######################################*/
-
-// Acepta la coneccion y inicia el handshake
-void sslserver::acceptConnection()
-{
-  QSslSocket *socket = dynamic_cast<QSslSocket *>(server.nextPendingConnection());
-
-  QObject::connect(socket, SIGNAL(encrypted()), this, SLOT(handshakeComplete()));
-  QObject::connect(socket, SIGNAL(sslErrors(const QList<QSslError> &)),
-                   this, SLOT(sslErrors(const QList<QSslError> &)));
-  QObject::connect(socket, SIGNAL(error(QAbstractSocket::SocketError)),
-                   this, SLOT(connectionFailure()));
-
-  socket->setPrivateKey(key);
-  socket->setLocalCertificate(certificate);
-
-  socket->setPeerVerifyMode(QSslSocket::VerifyNone);
-  socket->setProtocol(QSsl::SslV3);
-
-  socket->startServerEncryption();
-}
-
-// Recibe la notificacion de que el handshake esta terminado y
-// mete el nuevo socket en la lista de sockets
-
-void sslserver::handshakeComplete()
-{
-  QSslSocket *socket = dynamic_cast<QSslSocket *>(QObject::sender());
-
-  QObject::connect(socket, SIGNAL(disconnected()), this, SLOT(connectionClosed()));
-  QObject::connect(socket, SIGNAL(readyRead()), this, SLOT(receiveMessage()));
-
-  sockets.push_back(socket);
-}
-
-void sslserver::sslErrors(const QList<QSslError> &errors)
-{
-  QSslSocket *socket = dynamic_cast<QSslSocket *>(QObject::sender());
-
-
-  QString errorStrings;
-  foreach (QSslError error, errors)
-  {
-    errorStrings += error.errorString();
-    if (error != errors.last())
+    if(!server->listen(QHostAddress::Any, port))
     {
-      errorStrings += ';';
+        qDebug() << "No se ha podido poner a escuchar el servidor (puerto ocupado)";
+        exit(53);
     }
-  }
-  qDebug() << "ERROR" << errorStrings;
-  socket->ignoreSslErrors();
 }
 
-void sslserver::receiveMessage()
+void sslserver::create_threads()
 {
-    QSslSocket *socket = dynamic_cast<QSslSocket *>(QObject::sender());
-
-    qDebug() << "Datos recividos!";
-    if(read_buffer_sz == 0 && socket->bytesAvailable () > sizeof(int64_t))
+    for(int i = 0;i < cores - 1;++i)
     {
-        socket->read((char *)&read_buffer_sz, sizeof(read_buffer_sz));
+        QThread * tr = new QThread;
+        Hilo * h = new Hilo();
+        h->initialize(i,key,certificate,dir,mutex,mutexMmap,riff);
+
+        connect(this,SIGNAL(new_client(int,int)),h,SLOT(recieve_client(int,int)));
+
+        h->moveToThread(tr);
+        tr->start();
+        Pool_Threads.push_back(h);
+        hilos.push_back(tr);
     }
-
- do {
-      qDebug() << "Tamanyo del primer paquete" << read_buffer_sz;
-      qDebug() << "Tamanyo del buffer" << socket->bytesAvailable ();
-
-          if(socket->bytesAvailable () > read_buffer_sz && read_buffer_sz != -1)
-          {
-              std::string buffer;
-              buffer.resize(read_buffer_sz);
-
-
-              socket->read(const_cast<char*>(buffer.c_str()), read_buffer_sz);
-              qDebug() << "Buffer leido";
-
-              emit received(buffer);
-              read_buffer_sz = 0;
-          }
-          if(read_buffer_sz == 0 && socket->bytesAvailable () > sizeof(int64_t))
-          {
-              socket->read((char *)&read_buffer_sz, sizeof(read_buffer_sz));
-          }
-
- } while(read_buffer_sz < socket->bytesAvailable () && read_buffer_sz != 0);
-
+}
+void sslserver::repartir_cliente(int socketDescriptor)
+{
+    int min = Pool_Threads[0]->n_clientes;
+    int ii = 0;
+    for(int i = 0; i < Pool_Threads.size();i++)
+        if(Pool_Threads[i]->n_clientes < min)
+        {
+            min = Pool_Threads[i]->n_clientes;
+            ii = i;
+        }
+    emit new_client(Pool_Threads[ii]->_id,socketDescriptor);
 }
 
-void sslserver::connectionClosed()
+sslserver::~sslserver()
 {
-  QSslSocket *socket = dynamic_cast<QSslSocket *>(sender());
-  sockets.removeOne(socket);
-  socket->disconnect();
-  socket->deleteLater();
-  qDebug() << "Coneccion cerrada";
-}
+    server->disconnect();
+    server->deleteLater();
+    delete mutex;
+    delete mutexMmap;
 
-void sslserver::connectionFailure()
-{
-  QSslSocket *socket = dynamic_cast<QSslSocket *>(sender());
-  qDebug() << "Fallo en la conexion" << socket->errorString();
-  sockets.removeOne(socket);
-  socket->disconnect();
-  socket->deleteLater();
+    for(int i = 0; i < Pool_Threads.size();++i)
+        Pool_Threads[i]->deleteLater();
+
+    for(int i = 0; i < hilos.size();++i)
+        hilos[i]->deleteLater();
 }
